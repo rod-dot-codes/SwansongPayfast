@@ -109,7 +109,7 @@ export default function GiftVoucher() {
                 </div>
 
               </div>
-
+              </div>
               <br />
 
               <p className="is-size-7 is-family-sans-serif ls-1 mb-5">
@@ -167,7 +167,6 @@ export default function GiftVoucher() {
                     </p>
                   </div>
                 </div>
-              </div>
             </div>
           </form>
         </div>
