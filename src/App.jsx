@@ -1,0 +1,177 @@
+import React from 'react';
+import { useState } from 'react';
+import { useForm } from "react-hook-form";
+import { yupResolver } from '@hookform/resolvers/yup';
+import * as yup from "yup";
+import 'whatwg-fetch';
+
+let isProduction = window.location.toString().indexOf("www.swansong.co.za") > -1;
+let apiUrl = isProduction ? "https://api.alignd.co.za/swangsong/payment-request/" : "https://api.staging.alignd.co.za/swangsong/payment-request/";
+
+let settings = {
+  isProduction,
+  apiUrl
+}
+console.log("Settings for this URL is", settings)
+
+
+const schema = yup.object({
+  purchaser_first_name: yup.string().required("Please enter a valid first name"),
+  purchaser_last_name: yup.string().required("Please enter a valid last name"),
+  purchaser_email: yup.string().email().required("Please enter a valid email address"),
+  purchaser_mobile_number: yup.string(),
+  different_recipient: yup.boolean().required(),
+  recipient_email: yup.string().email().when("different_recipient", {
+    is: true,
+    then: yup.string().required("Please enter a valid recipient email")
+  }),
+  recipient_first_name: yup.string().when("different_recipient", {
+    is: true,
+    then: yup.string().required("Please enter a valid recipient first name")
+  }),
+  recipient_last_name: yup.string().when("different_recipient", {
+    is: true,
+    then: yup.string().required("Please enter a valid recipient last name")
+  }),
+  custom_message: yup.string().when("different_recipient", {
+    is: true,
+    then: yup.string().required("Please enter a valid custom message that we will send to the recipient, if specified, and added to the gift voucher.")
+  }),
+}).required();
+
+function ErrorLabel(props) {
+  return (
+    <label htmlFor={props.field_id} id={props.field_id}>
+      {props.field_id in props.errors && <span>{props.errors[props.field_id].message}</span>}
+    </label>
+  )
+}
+
+export default function App() {
+  const [state, setStatus] = useState({'state': 'open'});
+  const { register, handleSubmit, formState: { errors }, control } = useForm({
+    resolver: yupResolver(schema)
+  });
+  const submitPaymentRequest = (data) => {
+    console.log("Creating Payment Request to the Server")
+    setStatus({'state': 'request'});
+    fetch({
+      method: 'POST',
+      headers: { "Content-Type": "application/json" },
+      mode: 'cors',
+      credentials: 'omit',
+      body: JSON.stringify(data)
+    }).then(response => response.json())
+    .then(data => {
+      window.location.href = data.payment_redirect_url;
+      setStatus({'state': 'redirect'});
+    }).catch(err => {
+      setStatus({'state': 'error', err: err});
+    });
+  }
+  return (
+    <div className="column is-6 is-offset-3 has-background-festive has-text-white mb-5 px-6 py-5">
+      <h2 className="title is-7 is-family-secondary has-text-white mt-6">GIFT VOUCHER FORM</h2>
+      <div className="columns mb-6">
+        <div className="column is-12">
+          <form id="giftVoucherForm" onSubmit={handleSubmit(submitPaymentRequest)}>
+            <div className="field is-horizontal">
+              <div className="field-body">
+                <div className="field">
+                  <p className="control is-expanded">
+                    <ErrorLabel field_id="purchaser_first_name" errors={errors} />
+                    <input type="text" name="purchaser_first_name" {...register("purchaser_first_name")} className="is-family-primary p-2" placeholder="First Name*"
+                      required />
+                  </p>
+                </div>
+                <div className="field">
+                  <p className="control is-expanded">
+                    <ErrorLabel field_id="purchaser_last_name" errors={errors} />
+                    <input type="text" name="purchaser_last_name" {...register("purchaser_last_name")} className="is-family-primary p-2" placeholder="Surname*" required />
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="field is-horizontal">
+              <div className="field-body">
+                <div className="field">
+                  <p className="control is-expanded">
+                    <ErrorLabel field_id="purchaser_email" errors={errors} />
+                    <input type="email" name="purchaser_email" {...register("purchaser_email")} className="is-family-primary p-2" placeholder="Your Email*"
+                      required />
+                  </p>
+                </div>
+                <div className="field">
+                  <p className="control is-expanded">
+                    <ErrorLabel field_id="purchaser_mobile_number" errors={errors} />
+                    <input type="text" name="purchaser_mobile_number" {...register("purchaser_mobile_number")} className="is-family-primary p-2" placeholder="Your Cellphone Number" />
+                  </p>
+                </div>
+
+              </div>
+
+              <br />
+
+              <p className="is-size-7 is-family-sans-serif ls-1 mb-5">
+                RECIPIENT DETAILS
+              </p>
+
+              <div className="field is-horizontal">
+                <div className="field-body">
+                  <div className="field">
+                    <p className="control is-expanded">
+                      <ErrorLabel field_id="recipient_first_name" errors={errors} />
+                      <input type="text" name="recipient_first_name" {...register("recipient_first_name")} className="is-family-primary p-2"
+                        placeholder="Recipient First Name" />
+                    </p>
+                  </div>
+                  <div className="field">
+                    <p className="control is-expanded">
+                      <ErrorLabel field_id="recipient_last_name" errors={errors} />
+                      <input type="text" name="recipient_last_name" {...register("recipient_last_name")} className="is-family-primary p-2"
+                        placeholder="Recipient Surname" />
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="field">
+                <p className="control">
+                  <ErrorLabel field_id="recipient_email" errors={errors} />
+                  <input type="email" name="recipient_email" {...register("recipient_email")} className="is-family-primary p-2"
+                    placeholder="Recipient Email" />
+                </p>
+              </div>
+              <div className="field">
+                <div className="control">
+                  <input type="checkbox" name="different_recipient"  {...register("different_recipient")} value="false" />
+                  <span className="is-family-primary">Please email the voucher directly to recipient</span>
+                </div>
+              </div>
+
+              <div className="field">
+                <p className="control">
+                  <ErrorLabel field_id="custom_message" errors={errors} />
+                  <textarea className="is-family-primary p-2" {...register("custom_message")} id="custom-email-text"
+                    placeholder="Add a custom message that we will add to the gift card" cols="20" rows="5"></textarea>
+                </p>
+              </div>
+
+              <div className="field is-horizontal">
+                <div className="field-body">
+                  <div className="field">
+                    <p className="control is-expanded">
+                      <button type="submit"
+                        className="button has-background-black is-link is-size-7 is-family-secondary is-pulled-right is-radiusless is-hovered px-5" disabled={state.status == "request"}>
+                        PROCEED TO PAYMENT 
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
