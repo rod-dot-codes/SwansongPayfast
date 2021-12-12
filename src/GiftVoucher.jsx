@@ -47,7 +47,7 @@ function ErrorLabel(props) {
   )
 }
 
-export default function App() {
+export default function GiftVoucher() {
   const [state, setStatus] = useState({'state': 'open'});
   const { register, handleSubmit, formState: { errors }, control } = useForm({
     resolver: yupResolver(schema)
