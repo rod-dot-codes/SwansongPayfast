@@ -5,14 +5,151 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from "yup";
 import 'whatwg-fetch';
 
-let isProduction = window.location.toString().indexOf("www.swansong.life") > -1;
+
+
+_.parseErrors = function (data) {
+    function _camelCaseToVerbose(text) {
+        return text.replace(/(?=[A-Z])/g, ' ');
+    }
+
+    function _underscoredToVerbose(text) {
+        return text.replace(/[\d_]/g, ' ');
+    }
+
+    function _capitalize(text) {
+        text = text.toLowerCase();
+        text = text.charAt(0).toUpperCase() + text.slice(1);
+        return text;
+    }
+
+    function _parseErrorItem(item, listPos) {
+        var listItemTemplate = _.template(
+            '<li class="list-item"><span class="list-item-pos">Item <%= i %></span><%= content %></li>'
+        ),
+            containerTemplate = _.template('<ul class="item"><%= content %></ul>'),
+            output = [];
+
+        _.each(item, function (value, key) {
+            var fieldTemplate = _.template(
+                '<li class="field"><span class="name"><%- name %></span><%= content %></li>'
+            ),
+                plainValueTemplate = _.template('<span class="value"><%- value %></span>'),
+                plainValue,
+                listValue,
+                content;
+
+            if (_.isString(value)) {
+                plainValue = value;
+            } else if (_.isArray(value)) {
+                if (_.isString(value[0])) {
+                    plainValue = value.join(' ');
+                } else {
+                    listValue = _parseErrorList(value);
+                }
+            }
+
+            if (plainValue) {
+                content = plainValueTemplate({ value: plainValue });
+            } else if (listValue) {
+                content = listValue;
+            }
+
+            if (content) {
+                if (key.search(/[A-Z]/) != -1)
+                    key = _camelCaseToVerbose(key);
+
+                if (key.search(/[\d_]/) != -1)
+                    key = _underscoredToVerbose(key);
+
+                key = _capitalize(key);
+
+                output.push(fieldTemplate({
+                    name: key,
+                    content: content
+                }));
+            }
+        });
+
+        output = output.join('');
+
+        if (output) {
+            output = containerTemplate({ content: output });
+            if (listPos) {
+                output = listItemTemplate({
+                    i: listPos,
+                    content: output
+                });
+            }
+        }
+
+        return output;
+    }
+
+    function _parseErrorList(items) {
+        var containerTemplate = _.template('<ul class="list"><%= content %></ul>'),
+            output = [];
+
+        _.each(items, function (item, i) {
+            if (!_.isEmpty(item)) {
+                output.push(_parseErrorItem(item, i + 1));
+            }
+        });
+
+        output = output.join('');
+
+        if (output) {
+            output = containerTemplate({ content: output });
+        }
+
+        return output;
+    }
+
+    if (_.isArray(data)) {
+        return _parseErrorList(data);
+    } else {
+        return _parseErrorItem(data);
+    }
+};
+
+import * as Sentry from "@sentry/browser";
+
+let isProduction = window.location.toString().indexOf("swansong.life") > -1;
 let apiUrl = isProduction ? "https://api.alignd.co.za/swansong/create-payment-request/" : "https://api.staging.alignd.co.za/swansong/create-payment-request/";
+
+let sentryDSN = isProduction ? "https://e5bc5075083f4ab6a3b4e58fc6b3087c@o1054355.ingest.sentry.io/6105536" : "";
 
 let settings = {
     isProduction,
-    apiUrl
+    apiUrl,
+    sentryDSN
 }
+
+window.sentry = null;
+
+if (sentryDSN) {
+    window.sentry = Sentry.init({
+        dsn: sentryDSN,
+
+        // Alternatively, use `process.env.npm_package_version` for a dynamic release version
+        // if your build tool supports it.
+        release: "swansong-web-interface@0.1",
+        integrations: [],
+
+        // Set tracesSampleRate to 1.0 to capture 100%
+        // of transactions for performance monitoring.
+        // We recommend adjusting this value in production
+        tracesSampleRate: 0,
+
+    });
+}
+
+
+
+
+
+
 console.log("Settings for this URL is", settings)
+
 
 
 const voucherSchema = yup.object({
@@ -62,27 +199,46 @@ export default function PaymentRequest(props) {
     });
     const submitPaymentRequest = (data) => {
         let copiedData = JSON.parse(JSON.stringify(data));
-        if (copiedData?.voucher_code.length === 0) {
+        if (copiedData?.voucher_code != undefined && copiedData.voucher_code.length === 0) {
             delete copiedData["voucher_code"];
         }
-        if (!copiedData.hasOwnProperty("different_recipient")) {
+        if (copiedData?.different_recipient === undefined) {
             copiedData.different_recipient = false;
         }
 
         copiedData['transaction_type'] = props.transaction_type;
         console.log("Creating Payment Request to the Server")
         setStatus({ 'state': 'request' });
+
+        function handleErrors(response) {
+            if (!response.status != 201) {
+                if (response.status >= 500) {
+                    throw new Error("There was a fatal error handling your request.\
+The engineers have been notified!")
+                }
+                if (response.headers.get("Content-Type").indexOf("application/javascript")) {
+                    var error = "";
+
+                }
+            }
+            return response;
+        }
+
         fetch(settings.apiUrl, {
             method: 'POST',
             headers: { "Content-Type": "application/json" },
             mode: 'cors',
             credentials: 'omit',
             body: JSON.stringify(copiedData)
-        }).then(response => response.json())
+        }).then(response => handleErrors(response))
+            .then(response => response.json())
             .then(data => {
                 window.location.href = data.payment_redirect_url;
                 setStatus({ 'state': 'redirect' });
             }).catch(err => {
+                if (window.sentry) {
+                    Sentry.captureException(err);
+                }
                 setStatus({ 'state': 'error', err: err });
             });
     }
@@ -117,7 +273,7 @@ export default function PaymentRequest(props) {
                                         <input type="email" name="purchaser_email" {...register("purchaser_email")} className="is-family-primary p-2" placeholder="Your Email*"
                                             required />
                                     </p>
-                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="field is-horizontal">
@@ -198,9 +354,7 @@ export default function PaymentRequest(props) {
                                             className="button has-background-black is-link is-size-7 is-family-secondary is-pulled-right is-radiusless is-hovered px-5" disabled={state.status == "request"}>
                                             {props.transaction_type == "gift-card" && <span>PROCEED TO PAYMENT</span>}
                                             {props.transaction_type == "session" && (
-                                                <span>{(getValues("voucher_code") || []).length > 0 ?
-                                                    <>REDEEM GIFT VOUCHER</>
-                                                    : <>PROCEED TO PAYMENT</>}</span>
+                                                <span>PROCEED</span>
                                             )}
                                         </button>
                                     </p>
